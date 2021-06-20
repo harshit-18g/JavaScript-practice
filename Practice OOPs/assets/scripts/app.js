@@ -1,117 +1,161 @@
-class DOMHandler {
-    static clearEventListeners(element){
-        const clonedElement = element.cloneNode('true');
+class DOMHelper {
+    static clearEventListeners(element) {
+        const clonedElement = element.cloneNode(true);
         element.replaceWith(clonedElement);
         return clonedElement;
     }
-
-    static moveElement(elementId, newDestinationSelector){
+  
+    static moveElement(elementId, newDestinationSelector) {
         const element = document.getElementById(elementId);
         const destinationElement = document.querySelector(newDestinationSelector);
         destinationElement.append(element);
+        element.scrollIntoView({behavior : 'smooth'});
     }
 }
-
-class ToolTip {
-    constructor(closeNotifierFn){
-        this.closeNotifier = closeNotifierFn;
+  
+class Component {
+    constructor(hostElementId, insertBefore = false) {
+        if (hostElementId) {
+            this.hostElement = document.getElementById(hostElementId);
+        } else {
+            this.hostElement = document.body;
+        }
+        this.insertBefore = insertBefore;
     }
-
-    closeToolTip = () => {
+  
+    detach() {
+        if (this.element) {
+            this.element.remove();
+            // this.element.parentElement.removeChild(this.element);
+        }
+    }
+  
+    attach() {
+        this.hostElement.insertAdjacentElement(
+            this.insertBefore ? 'afterbegin' : 'beforeend',
+            this.element
+        );
+    }
+}
+  
+class Tooltip extends Component {
+    constructor(closeNotifierFunction, text, hostElementId) {
+        super(hostElementId);
+        this.closeNotifier = closeNotifierFunction;
+        this.text = text;
+        this.create();
+    }
+  
+    closeTooltip = () => {
         this.detach();
         this.closeNotifier();
-    }
-
-    detach(){
-        this.element.remove();
-    }
-
-    show(){
+    };
+  
+    create() {
         const tooltipElement = document.createElement('div');
         tooltipElement.className = 'card';
-        tooltipElement.textContent = 'Hello....';
-        tooltipElement.addEventListener('click', this.closeToolTip);
+        const tooltipTemplate = document.getElementById('tooltip');
+        const tooltipBody = document.importNode(tooltipTemplate.content, true);
+        tooltipBody.querySelector('p').textContent = this.text;
+        tooltipElement.append(tooltipBody);
+
+        const hostElPosLeft = this.hostElement.offsetLeft;
+        const hostElPosTop = this.hostElement.offsetTop;
+        const hostElHeight = this.hostElement.clientHeight;
+        const parentElementScrolling = this.hostElement.parentElement.scrollTop;
+
+        const x = hostElPosLeft + 20;
+        const y = hostElPosTop + hostElHeight - parentElementScrolling - 10;
+
+        tooltipElement.style.position = 'absolute';
+        tooltipElement.style.left = x +'px';
+        tooltipElement.style.top = y + 'px';
+
+        tooltipElement.addEventListener('click', this.closeTooltip);
         this.element = tooltipElement;
-        document.body.append(tooltipElement);
     }
 }
-
+  
 class ProjectItem {
-    hasTooltipActive = true;
-
-    constructor(id, updateProjectListFunction, type){
+    hasActiveTooltip = false;
+  
+    constructor(id, updateProjectListsFunction, type) {
         this.id = id;
-        this.updateProjectListHandler = updateProjectListFunction;
-        this.connectSwitchBtn(type);
-        this.connectMoreInfoBtn();
+        this.updateProjectListsHandler = updateProjectListsFunction;
+        this.connectMoreInfoButton();
+        this.connectSwitchButton(type);
     }
-
-    showMoreInfo(){
-        if(this.hasTooltipActive){
+  
+    showMoreInfoHandler() {
+        if (this.hasActiveTooltip) {
             return;
         }
-        const tooltip = new ToolTip(() => { this.hasTooltipActive = false; });
-        tooltip.show();
-        this.hasTooltipActive = false;
+        const projectElement = document.getElementById(this.id);
+        const tooltipText = projectElement.dataset.extraInfo;
+        const tooltip = new Tooltip(() => {
+            this.hasActiveTooltip = false;
+        }, tooltipText, this.id);
+        tooltip.attach();
+        this.hasActiveTooltip = true;
     }
-
-    connectMoreInfoBtn(){
+  
+    connectMoreInfoButton() {
         const projectItemElement = document.getElementById(this.id);
         const moreInfoBtn = projectItemElement.querySelector('button:first-of-type');
-        moreInfoBtn.addEventListener('click', this.showMoreInfo);
+        moreInfoBtn.addEventListener('click', this.showMoreInfoHandler.bind(this));
     }
-
-    connectSwitchBtn(type){
-        const projItemElement = document.getElementById(this.id);
-        let switchBtn = projItemElement.querySelector('button:last-of-type');
-        switchBtn = DOMHandler.clearEventListeners(switchBtn);
+  
+    connectSwitchButton(type) {
+        const projectItemElement = document.getElementById(this.id);
+        let switchBtn = projectItemElement.querySelector('button:last-of-type');
+        switchBtn = DOMHelper.clearEventListeners(switchBtn);
         switchBtn.textContent = type === 'active' ? 'Finish' : 'Activate';
-        switchBtn.addEventListener('click',this.updateProjectListHandler.bind(null,this.id));
+        switchBtn.addEventListener('click', this.updateProjectListsHandler.bind(null, this.id) );
     }
-
-    update(updateProjectListFn, type){
-        this.updateProjectListHandler = updateProjectListFn;
-        this.connectSwitchBtn(type);
+  
+    update(updateProjectListsFn, type) {
+        this.updateProjectListsHandler = updateProjectListsFn;
+        this.connectSwitchButton(type);
     }
 }
-
+  
 class ProjectList {
     projects = [];
-
-    constructor(projType){
-        this.type = projType;
-        const projItems = document.querySelectorAll(`#${projType}-projects li`);
-        for(const projItem of projItems){
-            this.projects.push(new ProjectItem(projItem.id, this.switchProject.bind(this), this.type));
+  
+    constructor(type) {
+        this.type = type;
+        const prjItems = document.querySelectorAll(`#${type}-projects li`);
+        for (const prjItem of prjItems) {
+            this.projects.push(new ProjectItem(prjItem.id, this.switchProject.bind(this), this.type));
         }
+        console.log(this.projects);
     }
-
-    setSwitchHandlerFunction(switchHandlerFunction){
+  
+    setSwitchHandlerFunction(switchHandlerFunction) {
         this.switchHandler = switchHandlerFunction;
     }
-
-    addProject(project){
+  
+    addProject(project) {
         this.projects.push(project);
-        DOMHandler.moveElement(project.id, `#${this.type}-projects ul`)
+        DOMHelper.moveElement(project.id, `#${this.type}-projects ul`);
         project.update(this.switchProject.bind(this), this.type);
     }
-
-    switchProject(projId){
-        this.switchHandler(this.projects.find(p => p.id === projId));
-        this.projects = this.projects.filter(p => p.id !== projId);
-        // alternative to above is
-        //const projIndex = this.projects.findIndex(p => pid === projId);
-        //this.projects.slice(projIndex, 1);
+  
+    switchProject(projectId) {
+        // const projectIndex = this.projects.findIndex(p => p.id === projectId);
+        // this.projects.splice(projectIndex, 1);
+        this.switchHandler(this.projects.find(p => p.id === projectId));
+        this.projects = this.projects.filter(p => p.id !== projectId);
     }
 }
 
 class App {
-    static init(){
+    static init() {
         const activeProjectsList = new ProjectList('active');
         const finishedProjectsList = new ProjectList('finished');
         activeProjectsList.setSwitchHandlerFunction(finishedProjectsList.addProject.bind(finishedProjectsList));
         finishedProjectsList.setSwitchHandlerFunction(activeProjectsList.addProject.bind(activeProjectsList));
     }
 }
-
-App.init();
+  
+App.init();  
